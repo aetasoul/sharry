@@ -32,7 +32,18 @@ object OFiles {
         Async[F].background(
           store.fileStore.computeAttributes
             .consumeAll(AttributeName.all)
-            .evalMap(store.fileStore.updateChecksum)
+            .evalMap { fm =>
+              store.fileStore
+                .updateChecksum(fm)
+                .attempt
+                .flatMap {
+                  case Right(_)  => ().pure[F]
+                  case Left(err) =>
+                    logger.error(err)(
+                      s"Failed to persist checksum for file ${fm.id.id}, skipping it"
+                    )
+                }
+            }
             .compile
             .drain
         )

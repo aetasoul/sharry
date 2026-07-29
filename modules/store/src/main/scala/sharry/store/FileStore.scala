@@ -89,7 +89,7 @@ object FileStore {
       attrStore.saveMeta(meta)
 
     def updateChecksum(meta: RFileMeta): F[Unit] =
-      attrStore.updateChecksum(meta.id, meta.checksum)
+      attrStore.updateChecksum(meta)
 
     def addChunk(
         id: Ident,

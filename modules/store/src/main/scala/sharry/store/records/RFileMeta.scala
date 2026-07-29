@@ -1,7 +1,5 @@
 package sharry.store.records
 
-import cats.implicits.*
-
 import sharry.common.*
 import sharry.store.doobie.*
 import sharry.store.doobie.DoobieMeta.*
@@ -42,27 +40,32 @@ object RFileMeta {
       .update
       .run
 
+  /** Updates mimetype/length only, deliberately leaving `checksum` untouched.
+    *
+    * Every caller of this computes attributes with `excludeSha256`, so `r.checksum` is
+    * always empty here. Writing it would clobber a real checksum already persisted by the
+    * background worker (see `updateChecksum`) if that worker happened to run first.
+    * Callers that genuinely need to (re)set the checksum must go through
+    * `updateChecksum`.
+    *
+    * Not composed with `insert` into a single-transaction "upsert" here: the two
+    * independent writers (foreground request vs. background checksum worker, see
+    * `sharry.store.doobie.AttributeStore`) can each find the row missing and both attempt
+    * an insert, so the update-else-insert retry has to happen across separate
+    * transactions at the `F` level, not inside one `ConnectionIO`.
+    */
   def update(r: RFileMeta): ConnectionIO[Int] =
     Sql
       .updateRow(
         table,
         Columns.id.is(r.id),
         Sql.commas(
-          Columns.checksum.setTo(r.checksum),
           Columns.mimetype.setTo(r.mimetype),
           Columns.length.setTo(r.length)
         )
       )
       .update
       .run
-
-  def upsert(r: RFileMeta): ConnectionIO[Int] =
-    for {
-      un <- update(r)
-      in <-
-        if (un > 0) un.pure[ConnectionIO]
-        else insert(r)
-    } yield un + in
 
   def findById(id: Ident): ConnectionIO[Option[RFileMeta]] =
     Sql.selectSimple(Columns.all, table, Columns.id.is(id)).query[RFileMeta].option
