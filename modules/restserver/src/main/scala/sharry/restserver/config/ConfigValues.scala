@@ -373,7 +373,8 @@ object ConfigValues extends ConfigDecoders:
     val enabled = k("enabled", "ENABLED").as[Boolean]
     val interval = k("interval", "INTERVAL").as[Duration]
     val invalidAge = k("invalid-age", "INVALID_AGE").as[Duration]
-    (enabled, interval, invalidAge).mapN(CleanupConfig.apply)
+    val orphanFileMinAge = k("orphan-file-min-age", "ORPHAN_FILE_MIN_AGE").as[Duration]
+    (enabled, interval, invalidAge, orphanFileMinAge).mapN(CleanupConfig.apply)
   }
 
   val mailSmtp = {

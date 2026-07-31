@@ -57,7 +57,8 @@ object PeriodicCleanup {
     logger.stream
       .info(
         s"Periodic cleanup job active and will run every ${cleanupCfg.interval}. " ++
-          s"Will remove published shares expired for at least ${cleanupCfg.invalidAge}."
+          s"Will remove published shares expired for at least ${cleanupCfg.invalidAge}. " ++
+          s"Will remove orphaned files older than ${cleanupCfg.orphanFileMinAge}."
       )
       .drain
 
@@ -79,7 +80,7 @@ object PeriodicCleanup {
       invN <- signupOps.cleanInvites(signupCfg)
       _ <- logger.info(s"Removed $invN expired invitations.")
       _ <- logger.debug("Deleting orphaned files ...")
-      orphN <- shareOps.deleteOrphanedFiles
+      orphN <- shareOps.deleteOrphanedFiles(cleanupCfg.orphanFileMinAge)
       _ <- logger.info(s"Deleted $orphN orphaned files.")
     } yield ()
 

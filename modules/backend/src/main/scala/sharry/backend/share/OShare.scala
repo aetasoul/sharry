@@ -139,8 +139,11 @@ trait OShare[F[_]] {
 
   /** Deletes files that have no reference to a share. This should actually never happen,
     * but it might be possible due to bugs or manually modifying the database.
+    *
+    * Only considers files older than `minAge`, to avoid racing an upload that has created
+    * its file metadata but not yet linked it to a share.
     */
-  def deleteOrphanedFiles: F[Int]
+  def deleteOrphanedFiles(minAge: Duration): F[Int]
 }
 
 object OShare {
@@ -527,11 +530,13 @@ object OShare {
               .fold(0)((n, _) => n + 1)
         } yield n
 
-      def deleteOrphanedFiles: F[Int] =
+      def deleteOrphanedFiles(minAge: Duration): F[Int] =
         for {
+          now <- Timestamp.current[F]
+          point = now.minus(minAge)
           n <-
             store
-              .transact(Queries.findOrphanedFiles)
+              .transact(Queries.findOrphanedFiles(point))
               .evalMap(id =>
                 logger.debug(s"Delete orphaned file '${id.id}'") *> Queries.deleteFile(
                   store

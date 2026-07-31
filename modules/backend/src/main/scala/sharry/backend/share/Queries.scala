@@ -339,15 +339,26 @@ object Queries {
       frag.query[(RShare, RAccount)].stream
   }
 
-  def findOrphanedFiles: Stream[ConnectionIO, Ident] = {
+  /** Files with no reference to a share, created at least `olderThan` ago.
+    *
+    * The age check guards against a race with an upload still in progress: right after
+    * its `filemeta` row is created but before it is linked to a share via `RShareFile`,
+    * the row is briefly indistinguishable from a truly orphaned one.
+    */
+  def findOrphanedFiles(olderThan: Timestamp): Stream[ConnectionIO, Ident] = {
     val fId = "f" :: RShareFile.Columns.id
     val fFile = "f" :: RShareFile.Columns.fileId
     val mId = "m" :: RFileMeta.Columns.id
+    val mCreated = "m" :: RFileMeta.Columns.created
 
     val from =
       RFileMeta.table ++ fr"m LEFT OUTER JOIN" ++ RShareFile.table ++ fr"f ON" ++ fFile
         .is(mId)
-    val q = Sql.selectSimple(Seq(mId), from, fId.isNull)
+    val q = Sql.selectSimple(
+      Seq(mId),
+      from,
+      Sql.and(fId.isNull, mCreated.isLt(olderThan))
+    )
     logger.stream.trace(s"findOrphaned: $q").drain ++
       q.query[Ident].stream
   }
