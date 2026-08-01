@@ -92,4 +92,35 @@ class ChecksumRaceTest extends CatsEffectSuite {
       }
     }
   }
+
+  test(
+    "insert race resolved by a concurrent legitimate delete never raises"
+  ) {
+    // Same insert race as above (both writers observe the row missing), but a third actor
+    // deletes the row directly, the same way `Queries.deleteFile` does (user delete or the
+    // orphan-cleanup sweep, see `bug_upsert_retry_once` note). Whichever writer loses the
+    // insert race must not blow up when its update-retry then finds the row gone: that's a
+    // legitimate delete, not an unresolved race - `parTupled` already fails this test if any
+    // of the three actors raises, which is exactly that guarantee.
+    //
+    // The row's final state (present or absent, and with which checksum) is deliberately
+    // NOT asserted here: depending on exactly where the delete lands relative to the two
+    // writers, more than one outcome is legitimate - including one writer's fallback insert
+    // resurrecting the row after the delete (see `bug_orphan_delete_race`, a separate,
+    // already-tracked gap in `saveMeta`/`insertMeta`, not something this test's point is
+    // about).
+    StoreFixture.makeStore[IO].use { store =>
+      List.range(0, 20).parTraverse { _ =>
+        for {
+          id <- Ident.randomId[IO]
+          now <- Timestamp.current[IO]
+          _ <- (
+            store.fileStore.insertMeta(fastMeta(id, now)),
+            store.fileStore.updateChecksum(fullMeta(id, now)),
+            store.transact(RFileMeta.delete(id))
+          ).parTupled
+        } yield ()
+      }
+    }
+  }
 }
